@@ -1,0 +1,10 @@
+G:
+cd \"Mi unidad"\ADRES\input
+sqlite3 databaseADRESS.db
+.databases
+
+.separator ";"
+.import Municipios.csv municipios
+
+.separator ";"
+.import Prestadores.csv prestadores
