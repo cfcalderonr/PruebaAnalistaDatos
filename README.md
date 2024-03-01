@@ -14,7 +14,7 @@ En la carpeta src se encuentran los siguientes códigos de programación:
 2. R00_ProcesaDatos.R - En este código se crea la conexión con la base de datos creada en el código 1, se depuran y consolidan los datos y se hacen los respectivos análisis estadísticos.
 
 ## Notas adicionales
-Teniendo en cuenta que la estructura usada para el procesamiento de la prueba técnica es importante pero que los datos usados contienen información sensible se toman las siguientes medidas para el cargue de archivos en el repositorio:
+Teniendo en cuenta que la estructura usada para el procesamiento de la prueba técnica es importante y que los datos usados pueden contener información sensible se toman las siguientes medidas para el cargue de archivos en el repositorio:
 * En la carpeta doc únicamente se carga el pdf con la descripción de la prueba.
-* En la carpeta input se carga el archivo de municipios que no contiene información sensible.
-* En la carpeta output se carga el archivo de resultados omitiendo las tablas con información sensible.
+* En la carpeta input se carga el archivo de municipios.
+* En la carpeta output se carga el archivo de resultados omitiendo algunas tablas.
