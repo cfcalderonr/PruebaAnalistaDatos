@@ -306,6 +306,9 @@ tabFit <- summary(fit)$coefficients %>%
 p2 <- ggplot(data.frame(res = fit$residuals), aes(sample = res)) + 
   stat_qq() + xlab("Cuantiles teóricos") + ylab("Cuantiles muestrales")
 
+shp.test <- shapiro.test(fit$residuals)
+round(shp.test$p.value, 5)
+
 # Random Forest - Importancia ---------------------------------------------
 fit_RF <- randomForest(Indicador ~ ., data = dataM)
 tabFitF <- tabFit %>% 
