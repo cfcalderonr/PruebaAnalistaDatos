@@ -1,8 +1,17 @@
 # -------------------------------------------------------------------------
 # R version 4.3.1
 # 
-# 01CargaData.R
+# R00_ProcesaDatos.R
 # Autor: Cristhian Calderon
+# Fecha: 29/02/2024
+# 
+# input: 
+#   Conexion con base de datos en SQLite (databaseADRESS.db)
+#   tablas municipios, prestadores
+# 
+# output: 
+#   00Resultados_v2.xlsx - Excel con resultados consolidados
+# 
 # -------------------------------------------------------------------------
 rm(list = ls())
 
@@ -16,9 +25,12 @@ outPath <- file.path("..", "output")
 # -------------------------------------------------------------------------
 # Librerias ---------------------------------------------------------------
 # -------------------------------------------------------------------------
+
+# Conexion base de datos
 library(DBI)
 library(RSQLite)
 
+# Manejo de datos
 library(dplyr)
 library(tidyr)
 library(tibble)
@@ -28,9 +40,9 @@ library(ggplot2)
 library(ggpubr)
 library(openxlsx)
 
+# Analisis adicionales
 library(randomForest)
 library(factoextra)
-library(cluster)
 
 # -------------------------------------------------------------------------
 # Funciones ---------------------------------------------------------------
@@ -55,6 +67,8 @@ dim(municipios) # 1118    8
 
 prestadores <- dbGetQuery(mydb, 'SELECT depa_nombre, muni_nombre, codigo_habilitacion, nits_nit, razon_social, clpr_nombre, nivel, caracter, fecha_radicacion, fecha_vencimiento, clase_persona, naju_nombre FROM prestadores')
 dim(prestadores) # 60946    12
+
+table(prestadores$clpr_nombre)
 
 # -------------------------------------------------------------------------
 # Procesamiento -----------------------------------------------------------
@@ -114,9 +128,9 @@ sum(duplicated(prestadores$codigo_habilitacion))
 
 # Prestadores/Nits duplicados [Hay varias sedes con el mismo nit]
 sum(duplicated(prestadores$nits_nit))
-# prestadores %>% 
-#   group_by(nits_nit) %>% 
-#   mutate(n = n()) %>% 
+# prestadores %>%
+#   group_by(nits_nit) %>%
+#   mutate(n = n()) %>%
 #   filter(n > 1)
 
 # Nits con diferentes razones sociales
@@ -191,6 +205,9 @@ baseF <- exc_join %>%
   mutate(no_sedes = n()) %>% 
   ungroup()
 
+# Descriptivo cantidad de sedes
+table(baseF$no_sedes)
+
 colSums(is.na(baseF))[colSums(is.na(baseF)) != 0]
 
 # Limpieza de memoria
@@ -238,7 +255,11 @@ tabP <- baseF %>%
          depa_nombre = ifelse(depa_nombre == "La Guajira", "La\nGuajira", depa_nombre),
          depa_nombre = ifelse(depa_nombre == "San Andres", "San\nAndres", depa_nombre),
          depa_nombre = ifelse(depa_nombre == "Norte De Santander", "Norte De\nSantander", depa_nombre),
-         depa_nombre = ifelse(depa_nombre == "Valle Del Cauca", "Valle Del\nCauca", depa_nombre))
+         depa_nombre = ifelse(depa_nombre == "Valle Del Cauca", "Valle Del\nCauca", depa_nombre)) %>% 
+  arrange(Region, IndicadorD)
+
+depOrd <- tabP$depa_nombre
+tabP$depa_nombre <- factor(tabP$depa_nombre, levels = depOrd)
 
 geom.text.size = 2.8
 theme.size = 10
@@ -246,7 +267,7 @@ p1 <- tabP %>%
   ggplot(aes(x = depa_nombre, y = IndicadorD)) + 
   geom_point() + 
   geom_text(aes(label = round(IndicadorD, 1)), vjust = 1.5, size = geom.text.size) + 
-  facet_wrap(Region~., scales = "free") + 
+  facet_wrap(Region~., scales = "free_x") + 
   geom_hline(aes(yintercept = IndicadorR, color = Color), tabP) + 
   labs(y="Indicador", col = "Indicador de la región") + 
   theme(legend.position="bottom", text = element_text(size = theme.size),
@@ -270,6 +291,9 @@ tab2 <- baseF %>%
               ungroup() %>% 
               mutate(Indicador = Poblacion/Prestadores) %>% 
               select(-Prestadores, -Poblacion))
+
+ggplot(tab2, aes(x=Region, y=Indicador)) +
+  geom_boxplot()
 
 # Modelo de regresion lineal ----------------------------------------------
 dataM <- tab2 %>% 
@@ -314,18 +338,38 @@ acp <- prcomp(dat_cl[, -c(1:5)], scale = TRUE)
 p3 <- fviz_pca_ind(acp, 
              addEllipses=TRUE)
 
-p4 <- ggplot(dat_cl, aes(y = Indicador)) + 
-  geom_boxplot()
-dat_cl <- dat_cl %>% 
-  mutate(indOutlier = ifelse(Indicador > quantile(Indicador, probs = 0.75)+1.5*IQR(Indicador), "Outlier", "No outlier"))
+dat_cl2 <- dat_cl %>% 
+  mutate(cat_tam = cut(dat_cl$Poblacion, 
+                       breaks = c(-1, 50000, 100000, 200000, 20000000), 
+                       labels = c("(0-50k]", "(50k-100k]", "(100k-200k]", "200k+"))) %>% 
+  group_by(cat_tam) %>% 
+  mutate(indOutlier = ifelse(Indicador > quantile(Indicador, probs = 0.75)+1.5*IQR(Indicador), 
+                             "Atípico", "No atípico")) %>% 
+  ungroup()
 
-tab_dscrp <- dat_cl %>% 
-  group_by(indOutlier) %>% 
+max2_mun <- dat_cl2 %>% 
+  group_by(cat_tam) %>% 
+  arrange(cat_tam, desc(Indicador)) %>% 
+  mutate(IdLabel = 1:n()) %>% 
+  ungroup() %>% 
+  filter(IdLabel <= 2)
+
+p4 <- ggplot(dat_cl2, aes(x=cat_tam, y=Indicador)) +
+  geom_boxplot() + 
+  geom_text(aes(cat_tam, Indicador, hjust = 1.2, label=muni_nombre),
+            size = geom.text.size, data = max2_mun) + 
+  xlab("Clasificación de municipios por tamaño de población según el DANE") + 
+  theme(text = element_text(size = theme.size),
+        legend.title = element_text(size=theme.size-2), 
+        legend.text = element_text(size=theme.size-2))
+
+tab_dscrp <- dat_cl2 %>% 
+  group_by(cat_tam, indOutlier) %>% 
   summarise(no_municipios = n()) %>% 
-  left_join(dat_cl %>% 
+  left_join(dat_cl2 %>% 
               select(-c(Region:Depmun)) %>% 
-              gather(Variable, Valor, -indOutlier) %>% 
-              group_by(indOutlier, Variable) %>% 
+              gather(Variable, Valor, -c(indOutlier, cat_tam)) %>% 
+              group_by(indOutlier, cat_tam, Variable) %>% 
               summarise(Media = round(mean(Valor), 1)) %>% 
               spread(Variable, Media))
 
@@ -344,6 +388,9 @@ insertPlot(wb, "Ind_RegDep_1", startCol = ncol(tab1) + 2,
 addWorksheet(wb, "Ind_RegDep_2")
 writeDataTable(wb, "Ind_RegDep_2", tabP)
 
+addWorksheet(wb, "Ind_Mun")
+writeDataTable(wb, "Ind_Mun", dat_cl2)
+
 addWorksheet(wb, "Mod_lm_rf")
 writeDataTable(wb, "Mod_lm_rf", tabFitF)
 print(p2)
@@ -353,14 +400,14 @@ insertPlot(wb, "Mod_lm_rf", startCol = ncol(tabFitF) + 2,
 addWorksheet(wb, "Cluster")
 writeDataTable(wb, "Cluster", tab_dscrp)
 print(p3)
-insertPlot(wb, "Cluster", startCol = 7, startRow = nrow(tab_dscrp) + 3, 
+insertPlot(wb, "Cluster", startCol = 8, startRow = nrow(tab_dscrp) + 3, 
            width = 12, height = 12, fileType = "png", units = "cm")
 print(p4)
 insertPlot(wb, "Cluster", startCol = 1, startRow = nrow(tab_dscrp) + 3, 
-           width = 10, height = 12, fileType = "png", units = "cm")
+           width = 14, height = 15, fileType = "png", units = "cm")
 
 # Guarda excel
-outFile <- file.path(outPath, "00Resultados.xlsx")
+outFile <- file.path(outPath, "00Resultados_v2.xlsx")
 saveWorkbook(wb, file = outFile, overwrite = TRUE)
 
 # Desconecta base
